@@ -24,7 +24,7 @@ app.post('/items', (req, res) => {
 app.get('/stats', (req, res) => {
     res.json({
         totalProducts: products.length,
-        instanceId: os.hostname()
+        instanceId: process.env.INSTANCE_ID || os.hostname()
     });
 });
 
