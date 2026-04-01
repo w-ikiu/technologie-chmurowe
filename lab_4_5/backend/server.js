@@ -1,31 +1,49 @@
-// API - 2 endpointy do items (get, post), 1 endpoint do stats (get)
-
 const express = require('express');
 const os = require('os');
 const app = express();
+const port = 3000;
 
-app.use(express.json());
+let requestCount = 0;
+// czas uruchomienia serwera
+const startTime = Date.now(); 
 
-let products = ['Laptop', 'Myszka', 'Klawiatura'];
-
-app.get('/items', (req, res) => {
-    res.json({ items: products });
+// middleware liczacy kazde zapytanie
+app.use((req, res, next) => {
+    requestCount++;
+    next();
 });
 
-app.post('/items', (req, res) => {
-    if (req.body.name) {
-        products.push(req.body.name);
-        res.status(201).json({ message: 'Dodano produkt' });
-    } else {
-        res.status(400).json({ error: 'Brak nazwy' });
-    }
-});
+const products = [
+    { id: 1, name: 'Laptop', price: 3500 },
+    { id: 2, name: 'Myszka', price: 150 },
+    { id: 3, name: 'Klawiatura', price: 300 }
+];
 
-app.get('/stats', (req, res) => {
-    res.json({
-        totalProducts: products.length,
-        instanceId: process.env.INSTANCE_ID || os.hostname()
+// nowy endpoint: /health
+app.get('/health', (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+    res.json({ 
+        status: "ok", 
+        uptime: `${uptimeSeconds}s` 
     });
 });
 
-app.listen(3000, () => console.log('Backend dziala na porcie 3000'));
+// zaktualizowany endpoint: /stats
+app.get('/stats', (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+    res.json({
+        totalProducts: products.length,
+        instanceId: process.env.INSTANCE_ID || os.hostname(),
+        serverTime: new Date().toISOString(),
+        requestsHandled: requestCount,
+        uptime: `${uptimeSeconds}s`
+    });
+});
+
+app.get('/', (req, res) => {
+    res.json(products);
+});
+
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Backend listening at http://0.0.0.0:${port}`);
+});
