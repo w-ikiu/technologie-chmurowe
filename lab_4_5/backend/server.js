@@ -29,7 +29,7 @@ app.get('/health', (req, res) => {
 });
 
 // zaktualizowany endpoint: /stats
-app.get('/stats', (req, res) => {
+app.get('/api/stats', (req, res) => {
     const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
     res.json({
         totalProducts: products.length,

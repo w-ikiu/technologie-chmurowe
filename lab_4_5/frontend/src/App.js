@@ -55,6 +55,9 @@ function Stats() {
       <h2>Statystyki Systemu</h2>
       <p>Liczba produktów: {stats.totalProducts}</p>
       <p>ID instancji backendu: {stats.instanceId}</p>
+      <p>Czas pracy serwera (uptime): {stats.uptime}</p>
+      <p>Obsłużone żądania: {stats.requestsHandled}</p>
+      <p>Czas serwera: {stats.serverTime}</p>
     </div>
   );
 }
