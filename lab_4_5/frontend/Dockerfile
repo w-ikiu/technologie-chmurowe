@@ -18,6 +18,16 @@ RUN npm run build
 
 # etap 3: obraz nginx (production)
 FROM nginx:alpine AS production
+
+# argumenty budowania i metadane oci
+ARG BUILD_DATE
+ARG VERSION
+ARG NODE_ENV=production
+
+LABEL org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.title="frontend-app"
+
 # kopiujemy gotowy build
 COPY --from=build /app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
