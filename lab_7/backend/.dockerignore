@@ -1,0 +1,9 @@
+# ignorowane pliki i foldery
+node_modules
+npm-debug.log
+*.log
+.env
+.env.*
+*.test.js
+__tests__
+coverage
