@@ -1,0 +1,7 @@
+{
+  "instanceName": "product-dashboard-backend",
+  "requestTimeoutMs": 30000,
+  "maxConnections": 100,
+  "cacheTtlSeconds": 10,
+  "logLevel": "info"
+}

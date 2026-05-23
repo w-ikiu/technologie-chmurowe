@@ -1,0 +1,184 @@
+# docker compose przepisujacy architekture z poprzedniego zadania
+# 7 uslug, 3 sieci, 2 wolumeny, sekrety i configs
+
+services:
+  # postgres - baza danych, tylko w db-net
+  # uzytkownik i haslo dostarczane przez sekrety
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      # postgres czyta usera i haslo z plikow sekretow przez zmienne _FILE
+      POSTGRES_USER_FILE: /run/secrets/db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_user
+      - db_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - db-net
+    # healthcheck sprawdzajacy gotowosc bazy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/db_user) -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # redis - cache, tylko w app-net
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-net
+    # healthcheck sprawdzajacy odpowiedz redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # backend_1 - pierwsza instancja, port 3000
+  backend_1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      BACKEND_PORT: 3000
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      REDIS_URL: ${REDIS_URL}
+    secrets:
+      - db_user
+      - db_password
+    configs:
+      # plik konfiguracyjny wstrzykniety jako config, nie bind mount
+      - source: app_config
+        target: /app/app.config.json
+    networks:
+      - proxy-net
+      - app-net
+      - db-net
+    # start dopiero gdy postgres i redis sa zdrowe
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # backend_2 - druga instancja, port 3001, ten sam Dockerfile co backend_1
+  backend_2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      BACKEND_PORT: 3001
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      REDIS_URL: ${REDIS_URL}
+    secrets:
+      - db_user
+      - db_password
+    configs:
+      - source: app_config
+        target: /app/app.config.json
+    networks:
+      - proxy-net
+      - app-net
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # worker - przetwarzanie w tle, bez portu na hoscie, bez proxy-net
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      REDIS_URL: ${REDIS_URL}
+    secrets:
+      - db_user
+      - db_password
+    networks:
+      - app-net
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # nginx - load balancer, jedyny punkt wejscia, w proxy-net
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    configs:
+      # nginx.conf wstrzykniety jako config z jawna sciezka docelowa
+      - source: nginx_config
+        target: /etc/nginx/nginx.conf
+    networks:
+      - proxy-net
+    # nginx startuje gdy backendy sa uruchomione
+    depends_on:
+      backend_1:
+        condition: service_started
+      backend_2:
+        condition: service_started
+
+  # adminer - panel do bazy danych, tylko w db-net, dostepny pod 8080
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    networks:
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# trzy izolowane sieci z wlasnymi podsieciami i bramami
+networks:
+  proxy-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
+  app-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+          gateway: 172.21.0.1
+  db-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+          gateway: 172.22.0.1
+
+# nazwane wolumeny dla trwalosci danych
+volumes:
+  postgres-data:
+  redis-data:
+
+# sekrety dostarczane z plikow
+secrets:
+  db_user:
+    file: ./secrets/db_user.txt
+  db_password:
+    file: ./secrets/db_password.txt
+
+# pliki konfiguracyjne dostarczane z plikow
+configs:
+  nginx_config:
+    file: ./nginx.conf
+  app_config:
+    file: ./backend/app.config.json
