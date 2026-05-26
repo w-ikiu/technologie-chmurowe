@@ -1,0 +1,24 @@
+# plik dev - automatycznie dolaczany przez docker compose
+# dodaje porty dev, bind mounty kodu zrodlowego
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  # bind mounty kodu zrodlowego dla hot-reload w trybie dev
+  backend_1:
+    volumes:
+      - ./backend/src:/app/src
+
+  backend_2:
+    volumes:
+      - ./backend/src:/app/src
+
+  worker:
+    volumes:
+      - ./worker/src:/app/src

@@ -1,0 +1,247 @@
+name: lab_8
+services:
+  backend_1:
+    build:
+      context: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\backend
+      dockerfile: Dockerfile
+    configs:
+      - source: app_config
+        target: /app/app.config.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: "268435456"
+    environment:
+      APP_NAME: product-dashboard
+      BACKEND_PORT: "3000"
+      LOG_LEVEL: info
+      NODE_ENV: production
+      POSTGRES_DB: products
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379
+    image: lab_8-backend_1:latest
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      app-net: null
+      db-net: null
+      proxy-net: null
+    secrets:
+      - source: db_user
+        target: /run/secrets/db_user
+      - source: db_password
+        target: /run/secrets/db_password
+    volumes:
+      - type: volume
+        source: backend-logs
+        target: /app/logs
+        volume: {}
+  backend_2:
+    build:
+      context: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\backend
+      dockerfile: Dockerfile
+    configs:
+      - source: app_config
+        target: /app/app.config.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: "268435456"
+    environment:
+      APP_NAME: product-dashboard
+      BACKEND_PORT: "3001"
+      LOG_LEVEL: info
+      NODE_ENV: production
+      POSTGRES_DB: products
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379
+    image: lab_8-backend_2:latest
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      app-net: null
+      db-net: null
+      proxy-net: null
+    secrets:
+      - source: db_user
+        target: /run/secrets/db_user
+      - source: db_password
+        target: /run/secrets/db_password
+    volumes:
+      - type: volume
+        source: backend-logs
+        target: /app/logs
+        volume: {}
+  nginx:
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/nginx.conf
+    depends_on:
+      backend_1:
+        condition: service_started
+        required: true
+      backend_2:
+        condition: service_started
+        required: true
+    image: nginx:alpine
+    networks:
+      proxy-net: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "80"
+        protocol: tcp
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: "536870912"
+    environment:
+      POSTGRES_DB: products
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_USER_FILE: /run/secrets/db_user
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $$(cat /run/secrets/db_user) -d products
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: postgres:15-alpine
+    networks:
+      db-net: null
+    secrets:
+      - source: db_user
+        target: /run/secrets/db_user
+      - source: db_password
+        target: /run/secrets/db_password
+    volumes:
+      - type: volume
+        source: postgres-data
+        target: /var/lib/postgresql/data
+        volume: {}
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: 0.25
+          memory: "134217728"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      timeout: 5s
+      interval: 10s
+      retries: 5
+    image: redis:7-alpine
+    networks:
+      app-net: null
+    volumes:
+      - type: volume
+        source: redis-data
+        target: /data
+        volume: {}
+  worker:
+    build:
+      context: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\worker
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 0.25
+          memory: "134217728"
+    environment:
+      APP_NAME: product-dashboard
+      LOG_LEVEL: info
+      NODE_ENV: production
+      POSTGRES_DB: products
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379
+    image: lab_8-worker:latest
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      app-net: null
+      db-net: null
+    secrets:
+      - source: db_user
+        target: /run/secrets/db_user
+      - source: db_password
+        target: /run/secrets/db_password
+networks:
+  app-net:
+    name: lab_8_app-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+          gateway: 172.21.0.1
+  db-net:
+    name: lab_8_db-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+          gateway: 172.22.0.1
+  proxy-net:
+    name: lab_8_proxy-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
+volumes:
+  backend-logs:
+    name: lab_8_backend-logs
+  postgres-data:
+    name: lab_8_postgres-data
+  redis-data:
+    name: lab_8_redis-data
+secrets:
+  db_password:
+    name: lab_8_db_password
+    file: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\secrets\db_password.txt
+  db_user:
+    name: lab_8_db_user
+    file: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\secrets\db_user.txt
+configs:
+  app_config:
+    name: lab_8_app_config
+    file: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\backend\app.config.json
+  nginx_config:
+    name: lab_8_nginx_config
+    file: C:\Users\chelm\OneDrive\Desktop\technologie-chmurowe\lab_8\nginx.conf

@@ -1,14 +1,13 @@
-# docker compose przepisujacy architekture z poprzedniego zadania
-# 7 uslug, 3 sieci, 2 wolumeny, sekrety i configs
+# plik bazowy - wspolna konfiguracja dla dev i prod
+# nie zawiera portow dev ani bind mountow
 
 services:
   # postgres - baza danych, tylko w db-net
-  # uzytkownik i haslo dostarczane przez sekrety
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      # postgres czyta usera i haslo z plikow sekretow przez zmienne _FILE
+      # zmienna obowiazkowa - compose zglosi blad jesli brak w .env
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_USER_FILE: /run/secrets/db_user
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     secrets:
@@ -18,9 +17,8 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - db-net
-    # healthcheck sprawdzajacy gotowosc bazy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/db_user) -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/db_user) -d ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,57 +30,72 @@ services:
       - redis-data:/data
     networks:
       - app-net
-    # healthcheck sprawdzajacy odpowiedz redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # backend_1 - pierwsza instancja, port 3000
+  # backend_1 - pierwsza instancja backendu
   backend_1:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: lab_8-backend_1:${APP_VERSION:-latest}
     environment:
       BACKEND_PORT: 3000
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_HOST: postgres
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    env_file:
+      - path: .env.common
+        required: true
+      - path: .env.local
+        required: false
     secrets:
       - db_user
       - db_password
     configs:
-      # plik konfiguracyjny wstrzykniety jako config, nie bind mount
       - source: app_config
         target: /app/app.config.json
+    volumes:
+      - backend-logs:/app/logs
     networks:
       - proxy-net
       - app-net
       - db-net
-    # start dopiero gdy postgres i redis sa zdrowe
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-  # backend_2 - druga instancja, port 3001, ten sam Dockerfile co backend_1
+  # backend_2 - druga instancja backendu, ten sam dockerfile
   backend_2:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: lab_8-backend_2:${APP_VERSION:-latest}
     environment:
       BACKEND_PORT: 3001
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_HOST: postgres
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    env_file:
+      - path: .env.common
+        required: true
+      - path: .env.local
+        required: false
     secrets:
       - db_user
       - db_password
     configs:
       - source: app_config
         target: /app/app.config.json
+    volumes:
+      - backend-logs:/app/logs
     networks:
       - proxy-net
       - app-net
@@ -93,15 +106,22 @@ services:
       redis:
         condition: service_healthy
 
-  # worker - przetwarzanie w tle, bez portu na hoscie, bez proxy-net
+  # worker - przetwarzanie w tle, bez portu na hoscie
   worker:
     build:
       context: ./worker
       dockerfile: Dockerfile
+    image: lab_8-worker:${APP_VERSION:-latest}
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Ustaw POSTGRES_DB w pliku .env}
       POSTGRES_HOST: postgres
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    env_file:
+      - path: .env.common
+        required: true
+      - path: .env.local
+        required: false
     secrets:
       - db_user
       - db_password
@@ -114,25 +134,21 @@ services:
       redis:
         condition: service_healthy
 
-  # nginx - load balancer, jedyny punkt wejscia, w proxy-net
+  # nginx - load balancer, jedyny punkt wejscia
   nginx:
     image: nginx:alpine
-    ports:
-      - "80:80"
     configs:
-      # nginx.conf wstrzykniety jako config z jawna sciezka docelowa
       - source: nginx_config
         target: /etc/nginx/nginx.conf
     networks:
       - proxy-net
-    # nginx startuje gdy backendy sa uruchomione
     depends_on:
       backend_1:
         condition: service_started
       backend_2:
         condition: service_started
 
-  # adminer - panel do bazy danych, tylko w db-net, dostepny pod 8080
+  # adminer - panel bazy danych, profil debug
   adminer:
     image: adminer:latest
     ports:
@@ -142,6 +158,40 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    profiles:
+      - debug
+
+  # pgadmin - zaawansowany panel bazy danych, profil debug
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    networks:
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - debug
+
+  # db-migrator - jednorazowa usluga migracji, profil migrate
+  db-migrator:
+    image: alpine
+    command: >
+      sh -c "echo 'uruchamianie migracji bazy danych...' &&
+             sleep 2 &&
+             echo 'migracja zakonczona pomyslnie'"
+    restart: "no"
+    networks:
+      - db-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
 
 # trzy izolowane sieci z wlasnymi podsieciami i bramami
 networks:
@@ -168,6 +218,7 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+  backend-logs:
 
 # sekrety dostarczane z plikow
 secrets:
@@ -176,7 +227,7 @@ secrets:
   db_password:
     file: ./secrets/db_password.txt
 
-# pliki konfiguracyjne dostarczane z plikow
+# pliki konfiguracyjne
 configs:
   nginx_config:
     file: ./nginx.conf

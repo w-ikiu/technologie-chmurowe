@@ -1,9 +1,9 @@
-# sekrety - nigdy nie commitujemy
 secrets/db_user.txt
 secrets/db_password.txt
 
 # zmienne srodowiskowe z faktycznymi wartosciami
 .env
+.env.local
 
 # zaleznosci
 node_modules/
