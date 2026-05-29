@@ -22,7 +22,7 @@ jobs:
       - name: Zbuduj i opublikuj obraz
         uses: docker/build-push-action@v5
         with:
-          context: ./app/backend
+          context: ./lab_11_12/app/backend
           push: true
           tags: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
 
@@ -40,8 +40,8 @@ jobs:
 
       - name: Wdroz system
         run: |
-          kubectl apply -f k8s/postgres/
-          kubectl apply -f k8s/backend/
+          kubectl apply -f lab_11_12/k8s/postgres/
+          kubectl apply -f lab_11_12/k8s/backend/
           kubectl set image deployment/backend \
             backend=ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
 
