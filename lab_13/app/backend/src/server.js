@@ -6,6 +6,7 @@ app.use(express.json());
 
 const VERSION = '1.0.0';
 
+// pula polaczen
 const pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT) || 5432,
