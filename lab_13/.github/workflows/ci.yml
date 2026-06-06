@@ -1,0 +1,75 @@
+# workflow uruchamiany przy pushu tagu v*.*.* (np. v2.0.0)
+# buduje obrazy dockera i pushuje do ghcr.io
+name: CI/CD Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}
+
+jobs:
+  build-and-push:
+    name: Build and push Docker images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # logowanie do github container registry
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # pobranie tagu z nazwy referencji (np. v2.0.0)
+      - name: Extract tag
+        id: tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # budowanie i pushowanie obrazu backendu v1
+      - name: Build and push backend v1
+        uses: docker/build-push-action@v5
+        with:
+          context: app/backend
+          file: app/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-backend:v1.0.0
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-backend:latest
+
+      # budowanie i pushowanie obrazu backendu v2
+      - name: Build and push backend v2
+        uses: docker/build-push-action@v5
+        with:
+          context: app/backend
+          file: app/backend/Dockerfile.v2
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-backend:v2.0.0
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-backend:${{ steps.tag.outputs.VERSION }}
+
+      # budowanie i pushowanie obrazu frontendu
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: app/frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-frontend:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-frontend:${{ steps.tag.outputs.VERSION }}
+
+      - name: Pipeline summary
+        run: |
+          echo "## Pipeline zakończony" >> $GITHUB_STEP_SUMMARY
+          echo "Tag: ${{ steps.tag.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "Backend v2 image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/task-manager-backend:${{ steps.tag.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY

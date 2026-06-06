@@ -1,0 +1,14 @@
+# serwis backendu - selektor version: blue kieruje ruch do blue
+# przelaczenie na green: kubectl patch service backend-service -p '{"spec":{"selector":{"version":"green"}}}'
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+    version: blue
+  ports:
+    - port: 8080
+      targetPort: 8080

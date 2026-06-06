@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Manager</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f4f4f4; padding: 2rem; }
+    h1 { margin-bottom: 1.5rem; color: #333; }
+    .form { background: #fff; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .form h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+    .form input, .form select { width: 100%; padding: 0.5rem; margin-bottom: 0.8rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+    .form button { background: #4f46e5; color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    .form button:hover { background: #4338ca; }
+    .tasks { display: flex; flex-direction: column; gap: 0.8rem; }
+    .task { background: #fff; padding: 1rem 1.2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; }
+    .task-title { font-weight: 600; }
+    .task-desc { font-size: 0.85rem; color: #666; margin-top: 0.2rem; }
+    .badge { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+    .badge-low { background: #d1fae5; color: #065f46; }
+    .badge-medium { background: #fef3c7; color: #92400e; }
+    .badge-high { background: #fee2e2; color: #991b1b; }
+    .status { font-size: 0.8rem; color: #888; }
+    .error { color: red; margin-top: 0.5rem; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Task Manager</h1>
+
+  <div class="form">
+    <h2>Dodaj nowe zadanie</h2>
+    <input type="text" id="title" placeholder="Tytul zadania" />
+    <input type="text" id="description" placeholder="Opis (opcjonalny)" />
+    <select id="priority">
+      <option value="low">Niski priorytet</option>
+      <option value="medium" selected>Sredni priorytet</option>
+      <option value="high">Wysoki priorytet</option>
+    </select>
+    <button onclick="addTask()">Dodaj zadanie</button>
+    <div class="error" id="error"></div>
+  </div>
+
+  <div class="tasks" id="tasks"></div>
+
+  <script>
+    // pobiera liste zadan z backendu przez /api/tasks
+    async function fetchTasks() {
+      try {
+        const res = await fetch('/api/tasks');
+        const tasks = await res.json();
+        const container = document.getElementById('tasks');
+        if (!tasks.length) {
+          container.innerHTML = '<p style="color:#888">Brak zadan. Dodaj pierwsze!</p>';
+          return;
+        }
+        container.innerHTML = tasks.map(t => `
+          <div class="task">
+            <div>
+              <div class="task-title">${t.title}</div>
+              <div class="task-desc">${t.description || ''}</div>
+              <div class="status">Status: ${t.status}</div>
+            </div>
+            <span class="badge badge-${t.priority || 'medium'}">${t.priority || 'medium'}</span>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('tasks').innerHTML = '<p style="color:red">Blad ladowania zadan</p>';
+      }
+    }
+
+    // dodaje nowe zadanie przez POST /api/tasks
+    async function addTask() {
+      const title = document.getElementById('title').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const priority = document.getElementById('priority').value;
+      const errorEl = document.getElementById('error');
+
+      if (!title) {
+        errorEl.textContent = 'Tytul jest wymagany';
+        return;
+      }
+      errorEl.textContent = '';
+
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description, priority })
+        });
+        if (!res.ok) throw new Error('blad dodawania');
+        document.getElementById('title').value = '';
+        document.getElementById('description').value = '';
+        fetchTasks();
+      } catch (err) {
+        errorEl.textContent = 'Blad dodawania zadania';
+      }
+    }
+
+    // ladowanie zadan przy starcie
+    fetchTasks();
+  </script>
+</body>
+</html>
