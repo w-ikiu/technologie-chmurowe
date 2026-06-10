@@ -1,0 +1,6 @@
+# nadpisane wartosci dla kube-prometheus-stack
+# uzycie: helm install monitoring prometheus-community/kube-prometheus-stack \
+#   --namespace monitoring -f k8s/monitoring/values.yaml
+
+grafana:
+  adminPassword: admin123
